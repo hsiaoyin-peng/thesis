@@ -267,6 +267,22 @@ def packet_callback(packet):
                 else:
                     in_out_flags[3] = 1
 
+    # check the direction of packet(in/out) and show the payload size
+    inPkts = 0
+    outPkts = 0
+    inByts = 0
+    outByts = 0
+    inPktLen = 0
+    outPktLen = 0
+    if(direc == IN_Dir()):
+        inPkts += 1
+        inByts = packet[IP].len
+        inPktLen = inByts
+    else:
+        outPkts += 1
+        outByts = packet[IP].len
+        outPktLen = outByts
+    
     if isinstance(packet[TCP].payload, SSLv2):
         print('ssl')
     elif isinstance(packet[TCP].payload, TLS):
@@ -293,30 +309,18 @@ def packet_callback(packet):
                 
             count += 1
 
-        # check the direction of packet(in/out) and show the payload size
-        inPkts = 0
-        outPkts = 0
-        inByts = 0
-        outByts = 0
+        # check the direction of packet(in/out) and show the encrypted data size
         inData = 0
         outData = 0
         inDataByts = 0
         outDataByts = 0
-        inPktLen = 0
-        outPktLen = 0
         
         if(direc == IN_Dir()):
-            inPkts += 1
-            inByts = packet[IP].len
             inData = datacount
             inDataByts = appdata
-            inPktLen = inByts
         else:
-            outPkts += 1
-            outByts = packet[IP].len
             outData = datacount 
             outDataByts = appdata
-            outPktLen = outByts
         
         pktFlow = Flow(now, now, src, dst, sp, dp, proto,
                        inPkts, outPkts, inByts, outByts, 
@@ -330,6 +334,17 @@ def packet_callback(packet):
             found = find_and_cal_flow_info(pktFlow, direc, byts, appdata)
             if(not found):
                 flow_list.append(pktFlow)
+    else:
+        if (packet[TCP].sport == 22 or packet[TCP].dport == 22):
+            print('ssh')
+        #if isinstance(packet[TCP].payload, Raw):
+        #    payload = str(packet[TCP].payload.load)
+            #print(packet[TCP].sport)
+            #if payload.startswith('SSH-'):
+            #    print(payload)
+            #else:
+            #    print('normal tcp')
+
 
         # print the 5-tuple of packet 
     #    print('start\tsrc\t,dst\t,sp\t,dp\t,proto\t')
@@ -342,6 +357,7 @@ def packet_callback(packet):
     #    print('inPkts:{}\tinByts:{}\tinData:{}\tinDataByts:{}' .format(inPkts, inByts, inData, inDataByts))
     #    print('outPkts:{}\toutByts:{}\toutData:{}\toutDataByts:{}' .format(outPkts, outByts, outData, outDataByts))
     #    print('flow list count:{}' .format(len(flow_list)))
+
 
 load_layer("tls")
 if __name__ == '__main__': 
