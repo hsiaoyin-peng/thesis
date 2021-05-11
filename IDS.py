@@ -25,12 +25,9 @@ feature = ['outPkts','inPkts', 'outByts', 'inByts',
 # TCP Flags
 # [FIN, SYN, RST, PSH, ACK, URG, ECE, CWR]
 tcp_flags = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
-SSH_MESSAGE_TYPES = { 
-        0x01:"disconnect",
-        0x14:"kex_init",
-        0x15:"new_keys",
-        0xff:"unknown"
-        }
+# SSH message Types
+# [Disconnect, key init, new keys, unknown]
+SSH_MESSAGE_TYPES = [0x01, 0x14, 0x15, 0xff]
 
 flow_list = []
 
@@ -83,12 +80,16 @@ class Flow:
         if direc == IN_Dir():
             self.inPkts += 1
             self.inByts += byts
+            self.inData += flow.inData
+            self.inDataByts += dataByts
             self.inPktLenMax = find_max(self.inPktLenMax, flow.inPktLenMax)
             self.inPktLenMin = find_max(self.inPktLenMin, flow.inPktLenMin)
             self.inPktLenMean = cal_mean(self.inPktLenMean, self.inPkts, flow.inPktLenMean)
         else:
-            self.outPkts +=1
+            self.outPkts += 1
             self.outByts += byts
+            self.outData += flow.outData
+            self.outDataByts += dataByts
             self.outPktLenMax = find_max(self.outPktLenMax, flow.outPktLenMax)
             self.outPktLenMin = find_max(self.outPktLenMin, flow.outPktLenMin)
             self.outPktLenMean = cal_mean(self.outPktLenMean, self.outPkts, flow.outPktLenMean)
@@ -243,14 +244,15 @@ def thread_popup_timeout_flow():
                 pred = xgb_model.predict(xgb_input)
                 print('result: {}' .format(pred))
 
-def cal_ssh_len():
+def cal_ssh_len(payload):
     sshlen = 0
     power = 6
     for i in range(4):
-        val = packet[TCP].payload.load[i]
+        val = payload[i]
         val = val * pow(16, power)
         power = power - 2
         sshlen += val
+    return sshlen
 
 def packet_callback(packet):
     #packet.show()
@@ -289,6 +291,8 @@ def packet_callback(packet):
     outByts = 0
     inPktLen = 0
     outPktLen = 0
+    datacount = 0
+    appdata = 0
     if(direc == IN_Dir()):
         inPkts += 1
         inByts = packet[IP].len
@@ -303,8 +307,6 @@ def packet_callback(packet):
     elif isinstance(packet[TCP].payload, TLS):
         # TLS info
         count = 0
-        datacount = 0
-        appdata = 0
         tlspkt = packet[TLS]
         tls_len = len(tlspkt)
         # TLS record
@@ -324,65 +326,53 @@ def packet_callback(packet):
                 
             count += 1
 
-        # check the direction of packet(in/out) and show the encrypted data size
-        inData = 0
-        outData = 0
-        inDataByts = 0
-        outDataByts = 0
-        
-        if(direc == IN_Dir()):
-            inData = datacount
-            inDataByts = appdata
-        else:
-            outData = datacount 
-            outDataByts = appdata
-        
-        pktFlow = Flow(now, now, src, dst, sp, dp, proto,
-                       inPkts, outPkts, inByts, outByts, 
-                       inData, outData, inDataByts, outDataByts,
-                       inPktLen, inPktLen, inPktLen, outPktLen, outPktLen, outPktLen,
-                       flag_arr, in_out_flags)
-
-        if not flow_list:
-            flow_list.append(pktFlow)
-        else:
-            found = find_and_cal_flow_info(pktFlow, direc, byts, appdata)
-            if(not found):
-                flow_list.append(pktFlow)
     else:
         if (packet[TCP].sport == 22 or packet[TCP].dport == 22):
-            print('ssh')
-            print(len(packet[TCP].payload))
+            plen = len(packet[TCP].payload) 
             if isinstance(packet[TCP].payload, Padding):
                 pass
             elif isinstance(packet[TCP].payload, Raw):
-                print(packet[TCP].payload.load)
-                sshlen = 0
-                power = 6
-                for i in range(4):
-                    val = packet[TCP].payload.load[i]
-                    val = val * pow(16, power)
-                    power = power - 2
-                    sshlen += val
+                sshlen = cal_ssh_len(packet[TCP].payload.load)
+                ssh_type = packet[TCP].payload.load[5]
+                if ssh_type == 0x01: # disconnect
+                    pass
+                elif ssh_type == 0x14: # key exchange initial
+                    pass
+                elif ssh_type == 0x15: # new key
+                    pass
+                else:
+                    payload = packet[TCP].payload.load[0:4]
+                    if payload.decode('cp437').startswith('SSH-'): # ssh start
+                        pass
+                    else: # encypted data
+                        datacount = 1
+                        appdata = plen 
+    # check the direction of packet(in/out) and show the encrypted data size
+    inData = 0
+    outData = 0
+    inDataByts = 0
+    outDataByts = 0
+    
+    if(direc == IN_Dir()):
+        inData = datacount
+        inDataByts = appdata
+    else:
+        outData = datacount 
+        outDataByts = appdata
 
-                print('ssh length:{}' .format(sshlen))
-                #if payload.startswith('SSH-'):
-                #    print('ssh start')
-                #else:
-            #    print('normal tcp')
+    pktFlow = Flow(now, now, src, dst, sp, dp, proto,
+                   inPkts, outPkts, inByts, outByts, 
+                   inData, outData, inDataByts, outDataByts,
+                   inPktLen, inPktLen, inPktLen, outPktLen, outPktLen, outPktLen,
+                   flag_arr, in_out_flags)
+   
 
-
-        # print the 5-tuple of packet 
-    #    print('start\tsrc\t,dst\t,sp\t,dp\t,proto\t')
-    #    print('{time}\t{src}\t,{dst}\t,{sp}\t,{dp}\t,{proto}\t' .format(time = pktFlow.start,
-    #                                                                    src = pktFlow.src,
-    #                                                                    dst = pktFlow.dst,
-    #                                                                    sp = pktFlow.sp,
-    #                                                                    dp = pktFlow.dp,
-    #                                                                    proto = pktFlow.proto))
-    #    print('inPkts:{}\tinByts:{}\tinData:{}\tinDataByts:{}' .format(inPkts, inByts, inData, inDataByts))
-    #    print('outPkts:{}\toutByts:{}\toutData:{}\toutDataByts:{}' .format(outPkts, outByts, outData, outDataByts))
-    #    print('flow list count:{}' .format(len(flow_list)))
+    if not flow_list:
+        flow_list.append(pktFlow)
+    else:
+        found = find_and_cal_flow_info(pktFlow, direc, byts, appdata)
+        if(not found):
+            flow_list.append(pktFlow)
 
 
 load_layer("tls")
@@ -400,4 +390,4 @@ if __name__ == '__main__':
     popup_thread = threading.Thread(target = thread_popup_timeout_flow)
     popup_thread.start()
     #sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TLS in x, store=0, count=0)
-    sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
+    sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
