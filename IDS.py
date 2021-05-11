@@ -25,6 +25,12 @@ feature = ['outPkts','inPkts', 'outByts', 'inByts',
 # TCP Flags
 # [FIN, SYN, RST, PSH, ACK, URG, ECE, CWR]
 tcp_flags = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
+SSH_MESSAGE_TYPES = { 
+        0x01:"disconnect",
+        0x14:"kex_init",
+        0x15:"new_keys",
+        0xff:"unknown"
+        }
 
 flow_list = []
 
@@ -237,8 +243,17 @@ def thread_popup_timeout_flow():
                 pred = xgb_model.predict(xgb_input)
                 print('result: {}' .format(pred))
 
+def cal_ssh_len():
+    sshlen = 0
+    power = 6
+    for i in range(4):
+        val = packet[TCP].payload.load[i]
+        val = val * pow(16, power)
+        power = power - 2
+        sshlen += val
+
 def packet_callback(packet):
-    packet.show()
+    #packet.show()
     now = time.time()
     # packet information
     src = packet[IP].src
@@ -300,7 +315,7 @@ def packet_callback(packet):
                 
                 # if TLS record is belong to application_data(type=23)
                 # then calculate the application data size
-                if tlspkt[count].type is 23:
+                if tlspkt[count].type == 23:
                     appdata += tlspkt[count].deciphered_len
                     datacount += 1
 
@@ -337,12 +352,23 @@ def packet_callback(packet):
     else:
         if (packet[TCP].sport == 22 or packet[TCP].dport == 22):
             print('ssh')
-        #if isinstance(packet[TCP].payload, Raw):
-        #    payload = str(packet[TCP].payload.load)
-            #print(packet[TCP].sport)
-            #if payload.startswith('SSH-'):
-            #    print(payload)
-            #else:
+            print(len(packet[TCP].payload))
+            if isinstance(packet[TCP].payload, Padding):
+                pass
+            elif isinstance(packet[TCP].payload, Raw):
+                print(packet[TCP].payload.load)
+                sshlen = 0
+                power = 6
+                for i in range(4):
+                    val = packet[TCP].payload.load[i]
+                    val = val * pow(16, power)
+                    power = power - 2
+                    sshlen += val
+
+                print('ssh length:{}' .format(sshlen))
+                #if payload.startswith('SSH-'):
+                #    print('ssh start')
+                #else:
             #    print('normal tcp')
 
 
@@ -374,4 +400,4 @@ if __name__ == '__main__':
     popup_thread = threading.Thread(target = thread_popup_timeout_flow)
     popup_thread.start()
     #sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TLS in x, store=0, count=0)
-    sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
+    sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
