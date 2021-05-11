@@ -14,13 +14,17 @@ from keras.models import load_model
 def IN_Dir(): return 0
 def OUT_Dir(): return 1
 
-MAC = '00:0c:29:6d:29:60'
+MAC = '00:50:56:b2:9c:08'
+#MAC = '00:0c:29:6d:29:60'
 threshold = 3.0
 feature = ['outPkts','inPkts', 'outByts', 'inByts',
            'outData', 'outDataByts', 'inData', 'inDataByts',
            'outPkts/s','inPkts/s','outByts/s','inByts/s','byts/s', 'pkts/s',
            'outPktLenMax', 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
            'Label']
+columns = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts', 
+           'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
+           'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean']
 
 # TCP Flags
 # [FIN, SYN, RST, PSH, ACK, URG, ECE, CWR]
@@ -235,6 +239,10 @@ def thread_popup_timeout_flow():
                 data = [flow.outPkts, flow.inPkts, flow.outByts, flow.inByts, flow.outData, flow.outDataByts, 
                         flow.inData, flow.inDataByts, outPktss, inPktss, outBytss, inBytss, bytss, pktss,
                         flow.outPktLenMax , flow.outPktLenMin, flow.outPktLenMean, flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean]
+                
+                df = pd.DataFrame([data])
+                df.to_csv('output.csv', mode = 'a', index = False, header = False)
+
                 norm_data = (data - para_mean) / (para_max - para_min)
                 cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
                 extract_data = cnn.predict(cnn_norm_data)
@@ -387,7 +395,12 @@ if __name__ == '__main__':
     print(para_mean)
     print(para_max)
     print(para_min)
+    # Create a new csv output file to save flow information for training dataset
+    print('Ouput file is prepared: output.csv')
+    df = pd.DataFrame([columns])
+    df.to_csv('output.csv', header = False, index = False)
+
     popup_thread = threading.Thread(target = thread_popup_timeout_flow)
     popup_thread.start()
     #sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TLS in x, store=0, count=0)
-    sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
+    sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
