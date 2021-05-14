@@ -24,7 +24,8 @@ feature = ['outPkts','inPkts', 'outByts', 'inByts',
            'Label']
 columns = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts', 
            'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
-           'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean']
+           'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
+           'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'ECE', 'CWR']
 
 # TCP Flags
 # [FIN, SYN, RST, PSH, ACK, URG, ECE, CWR]
@@ -238,19 +239,20 @@ def thread_popup_timeout_flow():
                 
                 data = [flow.outPkts, flow.inPkts, flow.outByts, flow.inByts, flow.outData, flow.outDataByts, 
                         flow.inData, flow.inDataByts, outPktss, inPktss, outBytss, inBytss, bytss, pktss,
-                        flow.outPktLenMax , flow.outPktLenMin, flow.outPktLenMean, flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean]
+                        flow.outPktLenMax , flow.outPktLenMin, flow.outPktLenMean, flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean,
+                        flow.flags[0], flow.flags[1], flow.flags[2], flow.flags[3], flow.flags[4], flow.flags[5], flow.flags[6], flow.flags[7]]
                 
                 df = pd.DataFrame([data])
                 df.to_csv('output.csv', mode = 'a', index = False, header = False)
 
-                norm_data = (data - para_mean) / (para_max - para_min)
-                cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
-                extract_data = cnn.predict(cnn_norm_data)
-                extract_data = pd.DataFrame(extract_data,
-                                            columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
-                xgb_input = xgb.DMatrix(extract_data)
-                pred = xgb_model.predict(xgb_input)
-                print('result: {}' .format(pred))
+               # norm_data = (data - para_mean) / (para_max - para_min)
+               # cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
+               # extract_data = cnn.predict(cnn_norm_data)
+               # extract_data = pd.DataFrame(extract_data,
+               #                             columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
+               # xgb_input = xgb.DMatrix(extract_data)
+               # pred = xgb_model.predict(xgb_input)
+               # print('result: {}' .format(pred))
 
 def cal_ssh_len(payload):
     sshlen = 0
@@ -403,4 +405,4 @@ if __name__ == '__main__':
     popup_thread = threading.Thread(target = thread_popup_timeout_flow)
     popup_thread.start()
     #sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TLS in x, store=0, count=0)
-    sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x, store=0, count=0)
+    sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x and not IPv6 in x, store=0, count=0)
