@@ -3,12 +3,14 @@ import datetime
 import threading
 import numpy as np
 import pandas as pd
-import pickle
+import colorama
+
+#import pickle
 
 import xgboost as xgb
 
 from scapy.all import *
-
+from colorama import Fore, Style
 from keras.models import load_model
 
 def IN_Dir(): return 0
@@ -21,15 +23,16 @@ feature = ['outPkts','inPkts', 'outByts', 'inByts',
            'outData', 'outDataByts', 'inData', 'inDataByts',
            'outPkts/s','inPkts/s','outByts/s','inByts/s','byts/s', 'pkts/s',
            'outPktLenMax', 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
+           'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE',
            'Label']
 columns = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts', 
            'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
            'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
-           'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'ECE', 'CWR']
+           'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE']
 
 # TCP Flags
-# [FIN, SYN, RST, PSH, ACK, URG, ECE, CWR]
-tcp_flags = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
+# [FIN, SYN, RST, PSH, ACK, URG, CWR, ECE]
+tcp_flags = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x80, 0x40]
 # SSH message Types
 # [Disconnect, key init, new keys, unknown]
 SSH_MESSAGE_TYPES = [0x01, 0x14, 0x15, 0xff]
@@ -219,24 +222,37 @@ def thread_popup_timeout_flow():
                 srcPort = trans_port(flow.sp)
                 dstPort = trans_port(flow.dp)
 
-                print('------------------------------------------------------------------------------------')
                 #print('time: {}' .format(datetime.datetime.now().time()))
-                print('src\t\tdst\t\tsport\tdport\tprotocol')
-                print('{}\t{}\t{}\t{}\t{}' .format(flow.src, flow.dst, flow.sp, flow.dp, flow.proto))
-                print('duration\tsrc port\tdst port')
-                print('{}\t{}\t{}' .format(round(duration, 10), srcPort, dstPort)) 
-                print('inPkts\toutPkts\tinByts\toutByts\tinData\toutData\tinDataByts\toutDataByts')
-                print('{}\t{}\t{}\t{}\t{}\t{}\t{}\t\t{}' .format(flow.inPkts, flow.outPkts, flow.inByts, flow.outByts, 
-                                                                 flow.inData, flow.outData, flow.inDataByts, flow.outDataByts))
-                print('inPkts/s\toutPkts/s\tinByts/s\toutByts/s\tpkts/s\tbyts/s')
-                print('{}\t\t{}\t\t{}\t{}\t{}\t{}' .format(inPktss, outPktss, inBytss, outBytss, pktss, bytss)) 
-                print('inPktLenMax\tinPktLenMin\tinPktLenMean\toutPktLenMax\toutPktLenMin\toutPktLenMean')
-                print('{}\t\t{}\t\t{}\t{}\t{}\t{}' .format(flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean, flow.outPktLenMax, flow.outPktLenMin, flow.outPktLenMean)) 
-                print('FIN\tSYN\tRST\tPSH\tACK\tURG\tECE\tCWR')
-                print('{}' .format(flow.flags)) 
-                print('outPSH\tinPSH\toutURG\toutURG')
-                print('{}' .format(flow.inOutFlags)) 
-                
+                #print('src\t\tdst\t\tsport\tdport\tprotocol')
+                #print('{}\t{}\t{}\t{}\t{}' .format(flow.src, flow.dst, flow.sp, flow.dp, flow.proto))
+                #print('duration\tsrc port\tdst port')
+                #print('{}\t{}\t{}' .format(round(duration, 10), srcPort, dstPort)) 
+                #print('inPkts\toutPkts\tinByts\toutByts\tinData\toutData\tinDataByts\toutDataByts')
+                #print('{}\t{}\t{}\t{}\t{}\t{}\t{}\t\t{}' .format(flow.inPkts, flow.outPkts, flow.inByts, flow.outByts, 
+                #                                                 flow.inData, flow.outData, flow.inDataByts, flow.outDataByts))
+                #print('inPkts/s\toutPkts/s\tinByts/s\toutByts/s\tpkts/s\tbyts/s')
+                #print('{}\t\t{}\t\t{}\t{}\t{}\t{}' .format(inPktss, outPktss, inBytss, outBytss, pktss, bytss)) 
+                #print('inPktLenMax\tinPktLenMin\tinPktLenMean\toutPktLenMax\toutPktLenMin\toutPktLenMean')
+                #print('{}\t\t{}\t\t{}\t{}\t{}\t{}' .format(flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean, flow.outPktLenMax, flow.outPktLenMin, flow.outPktLenMean)) 
+                #print('FIN\tSYN\tRST\tPSH\tACK\tURG\tECE\tCWR')
+                #print('{}' .format(flow.flags)) 
+                #print('outPSH\tinPSH\toutURG\toutURG')
+                #print('{}' .format(flow.inOutFlags)) 
+               
+                print(Fore.LIGHTCYAN_EX + '5-tuple:\tduration\tsrc\t\tdst\t\tsport\tdport\tprotocol')
+                print('\t\t{}\t{}\t{}\t{}\t{}\t{}' .format(round(duration, 10), flow.src, flow.dst, flow.sp, flow.dp, flow.proto))
+                print(Fore.YELLOW + 'inPkts\tinByts\tinData\tinDataByts\t' + Fore.LIGHTGREEN_EX + 'outPkts\toutByts\toutData\toutDataByts')
+                print(Fore.YELLOW + '{}\t{}\t{}\t{}\t\t' .format(round(flow.inPkts, 2),
+                                                                  round(flow.inByts, 2), 
+                                                                  round(flow.inData, 2),
+                                                                  round(flow.inDataByts, 2)) + 
+                      Fore.LIGHTGREEN_EX + '{}\t{}\t{}\t{}' .format(round(flow.inPkts, 2), 
+                                                                    round(flow.outPkts, 2), 
+                                                                    round(flow.outByts, 2), 
+                                                                    round(flow.outData, 2), 
+                                                                    round(flow.outDataByts, 2)))
+                print(Style.RESET_ALL + '-----------------------------------------------------------------------------------------------') 
+
                 data = [flow.outPkts, flow.inPkts, flow.outByts, flow.inByts, flow.outData, flow.outDataByts, 
                         flow.inData, flow.inDataByts, outPktss, inPktss, outBytss, inBytss, bytss, pktss,
                         flow.outPktLenMax , flow.outPktLenMin, flow.outPktLenMean, flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean,
@@ -245,14 +261,14 @@ def thread_popup_timeout_flow():
                 df = pd.DataFrame([data])
                 df.to_csv('output.csv', mode = 'a', index = False, header = False)
 
-               # norm_data = (data - para_mean) / (para_max - para_min)
-               # cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
-               # extract_data = cnn.predict(cnn_norm_data)
-               # extract_data = pd.DataFrame(extract_data,
-               #                             columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
-               # xgb_input = xgb.DMatrix(extract_data)
-               # pred = xgb_model.predict(xgb_input)
-               # print('result: {}' .format(pred))
+                norm_data = (data - para_mean) / (para_max - para_min)
+                cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
+                extract_data = cnn.predict(cnn_norm_data)
+                extract_data = pd.DataFrame(extract_data,
+                                            columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
+                xgb_input = xgb.DMatrix(extract_data)
+                pred = xgb_model.predict(xgb_input)
+                print('result: {}' .format(pred))
 
 def cal_ssh_len(payload):
     sshlen = 0
@@ -391,9 +407,9 @@ if __name__ == '__main__':
     cnn = load_model('CNN.h5')
     xgb_model = xgb.Booster(model_file='xgb_model.model')
     print('load parameter')
-    para_mean = read_para('mean_para')
-    para_max = read_para('max_para')
-    para_min = read_para('min_para')
+    para_mean = read_para('coarse_mean_para')
+    para_max = read_para('coarse_max_para')
+    para_min = read_para('coarse_min_para')
     print(para_mean)
     print(para_max)
     print(para_min)
