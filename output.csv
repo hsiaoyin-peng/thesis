@@ -1,0 +1,2 @@
+outPkts,inPkts,outByts,inByts,outData,outDataByts,inData,inDataByts,outPkts/s,inPkts/s,outByts/s,inByts/s,byts/s,pkts/s,outPktLenMax,outPktLenMin,outPktLenMean,inPktLenMax,inPktLenMin,inPktLenMean,FIN,SYN,RST,PSH,ACK,URG,CWR,ECE
+11,12,2945,1360,4,1050,3,190,66.31,72.33,17751.76,8197.76,25949.519999999997,138.64,1347,1347,267.72727272727275,569,569,113.33333333333333,1,1,1,1,1,0,0,0

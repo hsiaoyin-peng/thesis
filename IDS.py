@@ -29,6 +29,7 @@ columns = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', '
            'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
            'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
            'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE']
+coarse = ['Benign', 'DDoS', 'Port scan', 'Botnet', 'Web attacks', 'Password brute force', 'Slow DoS', 'DoS']
 
 # TCP Flags
 # [FIN, SYN, RST, PSH, ACK, URG, CWR, ECE]
@@ -268,7 +269,11 @@ def thread_popup_timeout_flow():
                                             columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
                 xgb_input = xgb.DMatrix(extract_data)
                 pred = xgb_model.predict(xgb_input)
-                print('result: {}' .format(pred))
+                if int(pred) == 0:
+                    print('result: {}' .format(coarse[int(pred)]))
+                else:
+                    print('result: ' + Fore.LIGHTRED_EX + '{}' .format(coarse[int(pred)]))
+                print(Style.RESET_ALL)
 
 def cal_ssh_len(payload):
     sshlen = 0
