@@ -16,19 +16,34 @@ from keras.models import load_model
 def IN_Dir(): return 0
 def OUT_Dir(): return 1
 
-MAC = '00:50:56:b2:9c:08'
+# Mac address for check direction
+# ubuntu 20.04 10.10.16.238
+#MAC = '00:50:56:b2:9c:08'
+# local ubuntu 18.04 192.168.220.132
 #MAC = '00:0c:29:6d:29:60'
-threshold = 3.0
+# getway ubuntu 18.04 10.10.20.105
+MAC = '00:50:56:b2:a4:57'
+
+threshold = 1.0
 feature = ['outPkts','inPkts', 'outByts', 'inByts',
            'outData', 'outDataByts', 'inData', 'inDataByts',
            'outPkts/s','inPkts/s','outByts/s','inByts/s','byts/s', 'pkts/s',
            'outPktLenMax', 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
            'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE',
+           'ftp','ssh','telnet','http','https','well-known port','registered port','dynamic port',
            'Label']
-columns = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts', 
-           'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
-           'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean',
-           'FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE']
+#columns = ['dstPort', 'outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts', 
+#           'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
+#           'outPktLenMax' , 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean']
+
+
+norm_feature = ['outPkts', 'inPkts', 'outByts', 'inByts', 'outData', 'outDataByts', 'inData', 'inDataByts',
+                'outPkts/s', 'inPkts/s', 'outByts/s', 'inByts/s', 'byts/s', 'pkts/s',
+                'outPktLenMax', 'outPktLenMin', 'outPktLenMean', 'inPktLenMax', 'inPktLenMin', 'inPktLenMean']
+not_norm_feature = ['FIN', 'SYN', 'RST', 'PSH', 'ACK', 'URG', 'CWR', 'ECE',
+                    'ftp', 'ssh', 'telnet', 'http', 'https',
+                    'well-known port', 'registered port', 'dynamic port']
+
 coarse = ['Benign', 'DDoS', 'Port scan', 'Botnet', 'Web attacks', 'Password brute force', 'Slow DoS', 'DoS']
 
 # TCP Flags
@@ -39,10 +54,12 @@ tcp_flags = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x80, 0x40]
 SSH_MESSAGE_TYPES = [0x01, 0x14, 0x15, 0xff]
 
 flow_list = []
+pkt_count = 0
 
 para_mean = None
 para_max = None
 para_min = None
+
 
 # each flow record information
 class Flow:
@@ -72,7 +89,15 @@ class Flow:
         self.inPktLenMean = inPktLenMean
         self.outPktLenMean = outPktLenMean
         self.flags = flags
-        self.inOutFlags = inOutFlags 
+        self.inOutFlags = inOutFlags
+        self.ftp = 0
+        self.ssh = 0
+        self.telnet = 0
+        self.http = 0
+        self.https = 0
+        self.wkPort = 0
+        self.regPort = 0
+        self.dyPort = 0
 
     # compare timestamp to check if the incomming packet is in the timeout range
     def is_pkt_in_threshold(self, pkt_timestamp):
@@ -84,21 +109,21 @@ class Flow:
 
     # add packet to flow
     # modify 8 fields(inPkts, outPkts, inByts, outByts, inData, outData, inDataByts, outDataByts)
-    def flow_calculate(self, direc, byts, dataByts, flow):
+    def flow_calculate(self, direc, flow):
         self.end = flow.end
         if direc == IN_Dir():
             self.inPkts += 1
-            self.inByts += byts
+            self.inByts += flow.inByts
             self.inData += flow.inData
-            self.inDataByts += dataByts
+            self.inDataByts += flow.inDataByts
             self.inPktLenMax = find_max(self.inPktLenMax, flow.inPktLenMax)
             self.inPktLenMin = find_max(self.inPktLenMin, flow.inPktLenMin)
             self.inPktLenMean = cal_mean(self.inPktLenMean, self.inPkts, flow.inPktLenMean)
         else:
             self.outPkts += 1
-            self.outByts += byts
+            self.outByts += flow.outByts
             self.outData += flow.outData
-            self.outDataByts += dataByts
+            self.outDataByts += flow.outDataByts
             self.outPktLenMax = find_max(self.outPktLenMax, flow.outPktLenMax)
             self.outPktLenMin = find_max(self.outPktLenMin, flow.outPktLenMin)
             self.outPktLenMean = cal_mean(self.outPktLenMean, self.outPkts, flow.outPktLenMean)
@@ -115,6 +140,25 @@ class Flow:
                 self.inOutFlags[i] = 1
             # calculate count
             # self.flags[i] += flags[i]
+
+    def port_transfer(self):
+        if(self.dp == 20 or self.dp == 21):
+            self.ftp = 1
+        elif(self.dp == 22):
+            self.ssh = 1
+        elif(self.dp == 23):
+            self.telnet = 1
+        elif(self.dp == 80):
+            self.http = 1
+        elif(self.dp == 443):
+            self.https = 1
+
+        if(self.dp < 1024):
+            self.wkPort = 1
+        elif(self.dp >= 1024 and self.dp < 49152):
+            self.regPort = 1
+        else:
+            self.dyPort = 1
 
 
 def find_max(a, b):
@@ -151,7 +195,7 @@ def find_key(flow, key):
 
 # find new packet flow is exist in flow list or not
 # if yes then calculate the packet count and bytes
-def find_and_cal_flow_info(newflow, direc, byts, dataByts):
+def find_and_cal_flow_info(newflow, direc):
     for flow in flow_list:
         # same flow has the same key
         # if the incoming packet flow has same 5-tuple with previous flow
@@ -160,7 +204,7 @@ def find_and_cal_flow_info(newflow, direc, byts, dataByts):
             # and also check the incoming packet timestamp is in threshold
             if(flow.is_pkt_in_threshold(flow.start)):
                 # then calculte the bytes and count
-                flow.flow_calculate(direc, byts, dataByts, newflow)
+                flow.flow_calculate(direc, newflow)
                 flow.update_flags(newflow.flags, newflow.inOutFlags)
                 return True
     return False
@@ -199,8 +243,15 @@ def read_para(file):
             data.append(float(line.rstrip()))
             line = file.readline()
 
-        ser = pd.Series(data, index = feature[:len(feature)-1])
+        ser = pd.Series(data, index = feature[:len(norm_feature)])
         return ser
+
+def throughput_cal():
+    global pkt_count
+    while(1):
+        time.sleep(1)
+        #print(pkt_count)
+        pkt_count = 0
 
 # create a thread to pop up the timeout flow
 # check flow_list
@@ -212,6 +263,7 @@ def thread_popup_timeout_flow():
         for flow in flow_list:
             flag = flow.is_pkt_in_threshold(now)
             if(not flag):
+                start = time.time()
                 flow_list.remove(flow)
                 duration = cal_duration(flow.start, flow.end)
                 inPktss = cal_persecond_pktbyts(flow.inPkts, duration)
@@ -222,6 +274,7 @@ def thread_popup_timeout_flow():
                 bytss = inBytss + outBytss
                 srcPort = trans_port(flow.sp)
                 dstPort = trans_port(flow.dp)
+                flow.port_transfer()
 
                 #print('time: {}' .format(datetime.datetime.now().time()))
                 #print('src\t\tdst\t\tsport\tdport\tprotocol')
@@ -247,33 +300,45 @@ def thread_popup_timeout_flow():
                                                                   round(flow.inByts, 2), 
                                                                   round(flow.inData, 2),
                                                                   round(flow.inDataByts, 2)) + 
-                      Fore.LIGHTGREEN_EX + '{}\t{}\t{}\t{}' .format(round(flow.inPkts, 2), 
-                                                                    round(flow.outPkts, 2), 
+                      Fore.LIGHTGREEN_EX + '{}\t{}\t{}\t{}' .format(round(flow.outPkts, 2), 
                                                                     round(flow.outByts, 2), 
                                                                     round(flow.outData, 2), 
                                                                     round(flow.outDataByts, 2)))
-                print(Style.RESET_ALL + '-----------------------------------------------------------------------------------------------') 
 
                 data = [flow.outPkts, flow.inPkts, flow.outByts, flow.inByts, flow.outData, flow.outDataByts, 
                         flow.inData, flow.inDataByts, outPktss, inPktss, outBytss, inBytss, bytss, pktss,
                         flow.outPktLenMax , flow.outPktLenMin, flow.outPktLenMean, flow.inPktLenMax, flow.inPktLenMin, flow.inPktLenMean,
-                        flow.flags[0], flow.flags[1], flow.flags[2], flow.flags[3], flow.flags[4], flow.flags[5], flow.flags[6], flow.flags[7]]
-                
-                df = pd.DataFrame([data])
-                df.to_csv('output.csv', mode = 'a', index = False, header = False)
+                        flow.flags[0], flow.flags[1], flow.flags[2], flow.flags[3], flow.flags[4], flow.flags[5], flow.flags[6], flow.flags[7],
+                        flow.ftp, flow.ssh, flow.telnet, flow.http, flow.https, flow.wkPort, flow.regPort, flow.dyPort]
+                csv_data = [flow.dp] + data
 
-                norm_data = (data - para_mean) / (para_max - para_min)
+                df = pd.DataFrame([csv_data])
+                df.to_csv('output.csv', mode = 'a', index = False, header = False)
+              
+                df.columns = ['dp'] + feature[:len(feature)-1]
+                
+                data = df[norm_feature]
+                not_norm_data = df[not_norm_feature]
+
+                data = (data - para_mean) / (para_max - para_min)
+                norm_data = pd.concat([data, not_norm_data], axis = 1)
+
                 cnn_norm_data = norm_data.values.reshape(1, len(feature)-1, 1)
                 extract_data = cnn.predict(cnn_norm_data)
-                extract_data = pd.DataFrame(extract_data,
-                                            columns=['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31'])
+                extract_data = pd.DataFrame(extract_data, columns=list(range(64)))
                 xgb_input = xgb.DMatrix(extract_data)
                 pred = xgb_model.predict(xgb_input)
+                end = time.time()
+                processing_time = abs(end - start) + 1
+                
+                print(Style.RESET_ALL)
                 if int(pred) == 0:
                     print('result: {}' .format(coarse[int(pred)]))
                 else:
                     print('result: ' + Fore.LIGHTRED_EX + '{}' .format(coarse[int(pred)]))
                 print(Style.RESET_ALL)
+                #print(Style.RESET_ALL + 'processing time: {}' .format(processing_time))
+                print('-----------------------------------------------------------------------------------------------') 
 
 def cal_ssh_len(payload):
     sshlen = 0
@@ -286,6 +351,7 @@ def cal_ssh_len(payload):
     return sshlen
 
 def packet_callback(packet):
+    global pkt_count
     #packet.show()
     now = time.time()
     # packet information
@@ -294,7 +360,9 @@ def packet_callback(packet):
     sp = packet[TCP].sport
     dp = packet[TCP].dport
     proto = packet[IP].proto
-    byts = packet[IP].len
+    #byts = packet[IP].len
+    if(src == '10.10.20.106'):
+        pkt_count += 1
     
     direc = get_packet_direction(packet)
     
@@ -401,7 +469,7 @@ def packet_callback(packet):
     if not flow_list:
         flow_list.append(pktFlow)
     else:
-        found = find_and_cal_flow_info(pktFlow, direc, byts, appdata)
+        found = find_and_cal_flow_info(pktFlow, direc)
         if(not found):
             flow_list.append(pktFlow)
 
@@ -409,21 +477,24 @@ def packet_callback(packet):
 load_layer("tls")
 if __name__ == '__main__': 
     print('load model')
-    cnn = load_model('CNN.h5')
-    xgb_model = xgb.Booster(model_file='xgb_model.model')
+    cnn = load_model('coarse_CNN.h5')
+    xgb_model = xgb.Booster(model_file='coarse_xgb_model.model')
     print('load parameter')
-    para_mean = read_para('coarse_mean_para')
-    para_max = read_para('coarse_max_para')
-    para_min = read_para('coarse_min_para')
+    para_mean = read_para('new_coarse_mean_para')
+    para_max = read_para('new_coarse_max_para')
+    para_min = read_para('new_coarse_min_para')
     print(para_mean)
     print(para_max)
     print(para_min)
     # Create a new csv output file to save flow information for training dataset
     print('Ouput file is prepared: output.csv')
-    df = pd.DataFrame([columns])
+    df = pd.DataFrame([feature])
     df.to_csv('output.csv', header = False, index = False)
 
     popup_thread = threading.Thread(target = thread_popup_timeout_flow)
     popup_thread.start()
+    
+    throughtput_thread = threading.Thread(target = throughput_cal)
+    throughtput_thread.start()
     #sniff(iface="ens33", prn=packet_callback, lfilter= lambda x: TLS in x, store=0, count=0)
     sniff(iface="ens160", prn=packet_callback, lfilter= lambda x: TCP in x and not IPv6 in x, store=0, count=0)
